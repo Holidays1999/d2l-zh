@@ -34,6 +34,15 @@ from paddle import nn
 import os
 ```
 
+```{.python .input}
+#@tab mindspore
+from d2l import mindspore as d2l
+from mindspore import nn, ops
+import numpy as np
+import os
+```
+
+
 ##  读取数据集
 
 首先，下载并提取路径`../data/aclImdb`中的IMDb评论数据集。
@@ -95,9 +104,17 @@ d2l.plt.hist([len(line) for line in train_tokens], bins=range(0, 1000, 50));
 正如我们所料，评论的长度各不相同。为了每次处理一小批量这样的评论，我们通过截断和填充将每个评论的长度设置为500。这类似于 :numref:`sec_machine_translation`中对机器翻译数据集的预处理步骤。
 
 ```{.python .input}
-#@tab all
+#@tab mxnet, pytorch, paddle
 num_steps = 500  # 序列长度
 train_features = d2l.tensor([d2l.truncate_pad(
+    vocab[line], num_steps, vocab['<pad>']) for line in train_tokens])
+print(train_features.shape)
+```
+
+```{.python .input}
+#@tab mindspore
+num_steps = 500  # 序列长度
+train_features = np.array([d2l.truncate_pad(
     vocab[line], num_steps, vocab['<pad>']) for line in train_tokens])
 print(train_features.shape)
 ```
@@ -135,6 +152,16 @@ for X, y in train_iter:
     print('X:', X.shape, ', y:', y.shape)
     break
 print('小批量数目：', len(train_iter))
+```
+
+```{.python .input}
+#@tab mindspore
+train_iter = d2l.load_array((train_features, train_data[1]), 64)
+
+for X, y in train_iter.create_tuple_iterator():
+    print('X:', X.shape, ', y:', y.shape)
+    break
+print('小批量数目：', train_iter.get_dataset_size())
 ```
 
 ## 整合代码
@@ -204,6 +231,27 @@ def load_data_imdb(batch_size, num_steps=500):
     test_iter = d2l.load_array((test_features, d2l.tensor(test_data[1])),
                                batch_size,
                                is_train=False)
+    return train_iter, test_iter, vocab
+```
+
+```{.python .input}
+#@tab mindspore
+def load_data_imdb(batch_size, num_steps=500):
+    """返回数据迭代器和IMDb评论数据集的词表"""
+    data_dir = d2l.download_extract('aclImdb', 'aclImdb')
+    train_data = read_imdb(data_dir, True)
+    test_data = read_imdb(data_dir, False)
+    train_tokens = d2l.tokenize(train_data[0], token='word')
+    test_tokens = d2l.tokenize(test_data[0], token='word')
+    vocab = d2l.Vocab(train_tokens, min_freq=5)
+    train_features = [d2l.truncate_pad(
+        vocab[line], num_steps, vocab['<pad>']) for line in train_tokens]
+    test_features = [d2l.truncate_pad(
+        vocab[line], num_steps, vocab['<pad>']) for line in test_tokens]
+    train_iter = load_array((train_features, train_data[1]), batch_size)
+    test_iter = load_array((test_features, test_data[1]),
+                            batch_size,
+                            is_train=False)
     return train_iter, test_iter, vocab
 ```
 

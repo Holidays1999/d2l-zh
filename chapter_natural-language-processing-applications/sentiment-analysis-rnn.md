@@ -38,6 +38,17 @@ batch_size = 64
 train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
 ```
 
+```{.python .input}
+#@tab mindspore
+from d2l import mindspore as d2l
+from mindspore import nn, ops, Tensor
+from mindspore import dtype as mstype
+from mindspore.common import initializer as weight_init
+
+batch_size = 64
+train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
+```
+
 ## 使用循环神经网络表示单个文本
 
 在文本分类任务（如情感分析）中，可变长度的文本序列将被转换为固定长度的类别。在下面的`BiRNN`类中，虽然文本序列的每个词元经由嵌入层（`self.embedding`）获得其单独的预训练GloVe表示，但是整个序列由双向循环神经网络（`self.encoder`）编码。更具体地说，双向长短期记忆网络在初始和最终时间步的隐状态（在最后一层）被连结起来作为文本序列的表示。然后，通过一个具有两个输出（“积极”和“消极”）的全连接层（`self.decoder`），将此单一文本表示转换为输出类别。
@@ -127,6 +138,34 @@ class BiRNN(nn.Layer):
         return outs
 ```
 
+```{.python .input}
+#@tab mindspore
+class BiRNN(nn.Cell):
+    def __init__(self, vocab_size, embed_size, num_hiddens,
+                 num_layers, **kwargs):
+        super(BiRNN, self).__init__(**kwargs)
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        # 将bidirectional设置为True以获取双向循环神经网络
+        self.encoder = nn.LSTM(embed_size, num_hiddens, num_layers=num_layers,
+                                bidirectional=True)
+        self.decoder = nn.Dense(4 * num_hiddens, 2)
+
+    def constrtuct(self, inputs):
+        # inputs的形状是（批量大小，时间步数）
+        # 因为长短期记忆网络要求其输入的第一个维度是时间维，
+        # 所以在获得词元表示之前，输入会被转置。
+        # 输出形状为（时间步数，批量大小，词向量维度）
+        embeddings = self.embedding(inputs.T)
+        # 返回上一个隐藏层在不同时间步的隐状态，
+        # outputs的形状是（时间步数，批量大小，2*隐藏单元数）
+        outputs, _ = self.encoder(embeddings)
+        # 连结初始和最终时间步的隐状态，作为全连接层的输入，
+        # 其形状为（批量大小，4*隐藏单元数）
+        encoding = ops.cat((outputs[0], outputs[-1]), axis=1)
+        outs = self.decoder(encoding)
+        return outs
+```
+
 让我们构造一个具有两个隐藏层的双向循环神经网络来表示单个文本以进行情感分析。
 
 ```{.python .input}
@@ -165,6 +204,25 @@ def init_weights(layer):
 net.apply(init_weights)
 ```
 
+```{.python .input}
+#@tab mindspore
+def init_weights(net):
+    init_normal = weight_init.XavierUniform()
+    for _, cell in net.cells_and_names():
+        if isinstance(cell, (nn.Dense, )):
+            cell.weight.set_data(weight_init.initializer(init_normal,
+                                                         cell.weight.shape,
+                                                         cell.weight.dtype))
+        if isinstance(cell, (nn.LSTM, )):
+            for name, param in cell.parameters_and_names():
+                if "weight" in name:
+                    weight = getattr(cell, name)
+                    weight.set_data(weight_init.initializer(init_normal, weight.shape,
+                    weight.dtype))                                                        
+            
+init_weights(net)
+```
+
 ## 加载预训练的词向量
 
 下面，我们为词表中的单词加载预训练的100维（需要与`embed_size`一致）的GloVe嵌入。
@@ -201,6 +259,12 @@ net.embedding.weight.set_value(embeds)
 net.embedding.weight.stop_gradient = False
 ```
 
+```{.python .input}
+#@tab mindspore
+net.embedding.embedding_table.set_data(d2l.tensor(embeds))
+net.embedding.embedding_table.requires_grad = False
+```
+
 ## 训练和评估模型
 
 现在我们可以训练双向循环神经网络进行情感分析。
@@ -231,6 +295,14 @@ d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs,
     devices)
 ```
 
+```{.python .input}
+#@tab mindspore
+lr, num_epochs = 0.01, 2
+trainer = nn.Adam(learning_rate=lr, params=net.trainable_params())
+loss = nn.CrossEntropyLoss(reduction="none")
+d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs)
+```
+
 我们定义以下函数来使用训练好的模型`net`预测文本序列的情感。
 
 ```{.python .input}
@@ -259,6 +331,16 @@ def predict_sentiment(net, vocab, sequence):
     """预测文本序列的情感"""
     sequence = paddle.to_tensor(vocab[sequence.split()], place=d2l.try_gpu())
     label = paddle.argmax(net(sequence.reshape((1, -1))), axis=1)
+    return 'positive' if label == 1 else 'negative'
+```
+
+```{.python .input}
+#@tab mindspore
+#@save
+def predict_sentiment(net, vocab, sequence):
+    """预测文本序列的情感"""
+    sequence = Tensor(vocab[sequence.split()], mstype.int32)
+    label = ops.argmax(net(sequence.reshape((1, -1))), axis=1)
     return 'positive' if label == 1 else 'negative'
 ```
 

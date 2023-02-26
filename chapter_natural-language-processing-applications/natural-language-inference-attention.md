@@ -41,6 +41,13 @@ from paddle import nn
 from paddle.nn import functional as F
 ```
 
+```{.python .input}
+#@tab mindspore
+from d2l import mindspore as d2l
+from mindspore import nn, ops, Tensor
+from mindspore import dtype as mstype
+```
+
 ### 注意（Attending）
 
 第一步是将一个文本序列中的词元与另一个序列中的每个词元对齐。假设前提是“我确实需要睡眠”，假设是“我累了”。由于语义上的相似性，我们不妨将假设中的“我”与前提中的“我”对齐，将假设中的“累”与前提中的“睡眠”对齐。同样，我们可能希望将前提中的“我”与假设中的“我”对齐，将前提中的“需要”和“睡眠”与假设中的“累”对齐。请注意，这种对齐是使用加权平均的“软”对齐，其中理想情况下较大的权重与要对齐的词元相关联。为了便于演示， :numref:`fig_nli_attention`以“硬”对齐的方式显示了这种对齐方式。
@@ -94,6 +101,23 @@ def mlp(num_inputs, num_hiddens, flatten):
     if flatten:
         net.append(nn.Flatten(start_axis=1))
     return nn.Sequential(*net)
+```
+
+```{.python .input}
+#@tab mindspore
+def mlp(num_inputs, num_hiddens, flatten):
+    net = []
+    net.append(nn.Dropout(keep_prob=1-0.2))
+    net.append(nn.Dense(num_inputs, num_hiddens))
+    net.append(nn.ReLU())
+    if flatten:
+        net.append(nn.Flatten()) 
+    net.append(nn.Dropout(keep_prob=1-0.2))
+    net.append(nn.Dense(num_hiddens, num_hiddens))
+    net.append(nn.ReLU())
+    if flatten:
+        net.append(nn.Flatten())
+    return nn.SequentialCell(*net)
 ```
 
 值得注意的是，在 :eqref:`eq_nli_e`中，$f$分别输入$\mathbf{a}_i$和$\mathbf{b}_j$，而不是将它们一对放在一起作为输入。这种*分解*技巧导致$f$只有$m + n$个次计算（线性复杂度），而不是$mn$次计算（二次复杂度）
@@ -180,6 +204,29 @@ class Attend(nn.Layer):
         return beta, alpha
 ```
 
+```{.python .input}
+#@tab mindspore
+class Attend(nn.Cell):
+    def __init__(self, num_inputs, num_hiddens, **kwargs):
+        super(Attend, self).__init__(**kwargs)
+        self.f = mlp(num_inputs, num_hiddens, flatten=False)
+
+    def construct(self, A, B):
+        # A/B的形状：（批量大小，序列A/B的词元数，embed_size）
+        # f_A/f_B的形状：（批量大小，序列A/B的词元数，num_hiddens）
+        f_A = self.f(A)
+        f_B = self.f(B)
+        # e的形状：（批量大小，序列A的词元数，序列B的词元数）
+        e = ops.BatchMatMul()(f_A, f_B.transpose(0, 2, 1))
+        # beta的形状：（批量大小，序列A的词元数，embed_size），
+        # 意味着序列B被软对齐到序列A的每个词元(beta的第1个维度)
+        beta = ops.BatchMatMul()(ops.softmax(e, axis=-1), B)
+        # beta的形状：（批量大小，序列B的词元数，embed_size），
+        # 意味着序列A被软对齐到序列B的每个词元(alpha的第1个维度)
+        alpha = ops.BatchMatMul()(ops.softmax(e.transpose(0, 2, 1), axis=-1), A)
+        return beta, alpha
+```
+
 ### 比较
 
 在下一步中，我们将一个序列中的词元与与该词元软对齐的另一个序列进行比较。请注意，在软对齐中，一个序列中的所有词元（尽管可能具有不同的注意力权重）将与另一个序列中的词元进行比较。为便于演示， :numref:`fig_nli_attention`对词元以*硬*的方式对齐。例如，上述的*注意*（attending）步骤确定前提中的“need”和“sleep”都与假设中的“tired”对齐，则将对“疲倦-需要睡眠”进行比较。
@@ -227,6 +274,20 @@ class Compare(nn.Layer):
     def forward(self, A, B, beta, alpha):
         V_A = self.g(paddle.concat([A, beta], axis=2))
         V_B = self.g(paddle.concat([B, alpha], axis=2))
+        return V_A, V_B
+```
+
+
+```{.python .input}
+#@tab mindspore
+class Compare(nn.Cell):
+    def __init__(self, num_inputs, num_hiddens, **kwargs):
+        super(Compare, self).__init__(**kwargs)
+        self.g = mlp(num_inputs, num_hiddens, flatten=False)
+
+    def construct(self, A, B, beta, alpha):
+        V_A = self.g(ops.cat((A, beta), axis=2))
+        V_B = self.g(ops.cat((B, alpha), axis=2))
         return V_A, V_B
 ```
 
@@ -293,6 +354,23 @@ class Aggregate(nn.Layer):
         V_B = V_B.sum(axis=1)
         # 将两个求和结果的连结送到多层感知机中
         Y_hat = self.linear(self.h(paddle.concat([V_A, V_B], axis=1)))
+        return Y_hat
+```
+
+```{.python .input}
+#@tab mindspore
+class Aggregate(nn.Cell):
+    def __init__(self, num_inputs, num_hiddens, num_outputs, **kwargs):
+        super(Aggregate, self).__init__(**kwargs)
+        self.h = mlp(num_inputs, num_hiddens, flatten=True)
+        self.linear = nn.Dense(num_hiddens, num_outputs)
+
+    def construct(self, V_A, V_B):
+        # 对两组比较向量分别求和
+        V_A = V_A.sum(axis=1)
+        V_B = V_B.sum(axis=1)
+        # 将两个求和结果的连结送到多层感知机中
+        Y_hat = self.linear(self.h(ops.cat((V_A, V_B), axis=1)))
         return Y_hat
 ```
 
@@ -364,6 +442,28 @@ class DecomposableAttention(nn.Layer):
         return Y_hat
 ```
 
+```{.python .input}
+#@tab mindspore
+class DecomposableAttention(nn.Cell):
+    def __init__(self, vocab, embed_size, num_hiddens, num_inputs_attend=100,
+                 num_inputs_compare=200, num_inputs_agg=400, **kwargs):
+        super(DecomposableAttention, self).__init__(**kwargs)
+        self.embedding = nn.Embedding(len(vocab), embed_size)
+        self.attend = Attend(num_inputs_attend, num_hiddens)
+        self.compare = Compare(num_inputs_compare, num_hiddens)
+        # 有3种可能的输出：蕴涵、矛盾和中性
+        self.aggregate = Aggregate(num_inputs_agg, num_hiddens, num_outputs=3)
+
+    def construct(self, X):
+        premises, hypotheses = X[:, 0], X[:, 1]
+        A = self.embedding(premises)
+        B = self.embedding(hypotheses)
+        beta, alpha = self.attend(A, B)
+        V_A, V_B = self.compare(A, B, beta, alpha)
+        Y_hat = self.aggregate(V_A, V_B)
+        return Y_hat
+```
+
 ## 训练和评估模型
 
 现在，我们将在SNLI数据集上对定义好的可分解注意力模型进行训练和评估。我们从读取数据集开始。
@@ -404,6 +504,12 @@ batch_size, num_steps = 256, 50
 train_iter, test_iter, vocab = load_data_snli(batch_size, num_steps)
 ```
 
+```{.python .input}
+#@tab mindspore
+batch_size, num_steps = 256, 50
+train_iter, test_iter, vocab = d2l.load_data_snli(batch_size, num_steps)
+```
+
 ### 创建模型
 
 我们使用预训练好的100维GloVe嵌入来表示输入词元。我们将向量$\mathbf{a}_i$和$\mathbf{b}_j$在 :eqref:`eq_nli_e`中的维数预定义为100。 :eqref:`eq_nli_e`中的函数$f$和 :eqref:`eq_nli_v_ab`中的函数$g$的输出维度被设置为200.然后我们创建一个模型实例，初始化它的参数，并加载GloVe嵌入来初始化输入词元的向量。
@@ -433,6 +539,15 @@ net = DecomposableAttention(vocab, embed_size, num_hiddens)
 glove_embedding = d2l.TokenEmbedding('glove.6b.100d')
 embeds = glove_embedding[vocab.idx_to_token]
 net.embedding.weight.set_value(embeds);
+```
+
+```{.python .input}
+#@tab mindspore
+embed_size, num_hiddens = 100, 200
+net = DecomposableAttention(vocab, embed_size, num_hiddens)
+glove_embedding = d2l.TokenEmbedding('glove.6b.100d')
+embeds = glove_embedding[vocab.idx_to_token]
+net.embedding.embedding_table.set_data(d2l.tensor(embeds))
 ```
 
 ### 训练和评估模型
@@ -474,6 +589,14 @@ trainer = paddle.optimizer.Adam(learning_rate=lr, parameters=net.parameters())
 loss = nn.CrossEntropyLoss(reduction="none")
 d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs,
     devices[:1])
+```
+
+```{.python .input}
+#@tab mindspore
+lr, num_epochs = 0.001, 4
+trainer = nn.Adam(learning_rate=lr, params=net.trainable_params())
+loss = nn.CrossEntropyLoss(reduction="none")
+d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs)
 ```
 
 ### 使用模型
@@ -519,6 +642,26 @@ def predict_snli(net, vocab, premise, hypothesis):
                            
     return 'entailment' if label == 0 else 'contradiction' if label == 1 \
             else 'neutral'
+```
+
+```{.python .input}
+#@tab mindspore
+def predict_snli(net, vocab, premise, hypothesis):
+    """预测前提和假设之间的逻辑关系"""
+    net.set_train(False)
+    premise = Tensor(vocab[premise], dtype=mstype.int32)
+    hypothesis = Tensor(vocab[hypothesis], dtype=mstype.int32)
+    X = ops.stack((premise.reshape(-1, 1), hypothesis.reshape(-1, 1)), axis=1)
+    label = ops.argmax(net(X), axis=-1)
+    results = []
+    for l in label:
+        if l == 0:
+            results.append('entailment')
+        elif l == 1:
+            results.append('contradiction')
+        else:
+            results.append("neutral")
+    return results
 ```
 
 我们可以使用训练好的模型来获得对示例句子的自然语言推断结果。
