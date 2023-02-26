@@ -40,6 +40,16 @@ batch_size = 64
 train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
 ```
 
+```{.python .input}
+#@tab mindspore
+from d2l import mindspore as d2l
+from mindspore.common import initializer as weight_init
+from mindspore import nn, ops
+
+batch_size = 64
+train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
+```
+
 ## 一维卷积
 
 在介绍该模型之前，让我们先看看一维卷积是如何工作的。请记住，这只是基于互相关运算的二维卷积的特例。
@@ -52,7 +62,7 @@ train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
 我们在下面的`corr1d`函数中实现了一维互相关。给定输入张量`X`和核张量`K`，它返回输出张量`Y`。
 
 ```{.python .input}
-#@tab mxnet, pytorch
+#@tab mxnet, pytorch, mindspore
 def corr1d(X, K):
     w = K.shape[0]
     Y = d2l.zeros((X.shape[0] - w + 1))
@@ -232,6 +242,41 @@ class TextCNN(nn.Layer):
         return outputs
 ```
 
+```{.python .input}
+#@tab mindspore
+class TextCNN(nn.Cell):
+    def __init__(self, vocab_size, embed_size, kernel_sizes, num_channels,
+                 **kwargs):
+        super(TextCNN, self).__init__(**kwargs)
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        # 这个嵌入层不需要训练
+        self.constant_embedding = nn.Embedding(vocab_size, embed_size)
+        self.dropout = nn.Dropout(keep_prob=1-0.5)
+        self.decoder = nn.Dense(sum(num_channels), 2)
+        # 最大时间汇聚层没有参数，因此可以共享此实例
+        self.pool = nn.AdaptiveAvgPool1d(1)
+        self.relu = nn.ReLU()
+        # 创建多个一维卷积层
+        self.convs = nn.CellList()
+        for c, k in zip(num_channels, kernel_sizes):
+            self.convs.append(nn.Conv1d(2 * embed_size, c, k))
+
+    def construct(self, inputs):
+        # 沿着向量维度将两个嵌入层连结起来，
+        # 每个嵌入层的输出形状都是（批量大小，词元数量，词元向量维度）连结起来
+        embeddings = ops.cat((
+            self.embedding(inputs), self.constant_embedding(inputs)), axis=2)
+        # 根据一维卷积层的输入格式，重新排列张量，以便通道作为第2维
+        embeddings = embeddings.transpose(0, 2, 1)
+        # 每个一维卷积层在最大时间汇聚层合并后，获得的张量形状是（批量大小，通道数，1）
+        # 删除最后一个维度并沿通道维度连结
+        encoding = ops.cat([
+            ops.squeeze(self.relu(self.pool(conv(embeddings))), axis=-1)
+            for conv in self.convs], axis=1)
+        outputs = self.decoder(self.dropout(encoding))
+        return outputs
+```
+
 让我们创建一个textCNN实例。它有3个卷积层，卷积核宽度分别为3、4和5，均有100个输出通道。
 
 ```{.python .input}
@@ -269,6 +314,23 @@ def init_weights(net):
 init_weights(net)
 ```
 
+```{.python .input}
+#@tab mindspore
+embed_size, kernel_sizes, nums_channels = 100, [3, 4, 5], [100, 100, 100]
+net = TextCNN(len(vocab), embed_size, kernel_sizes, nums_channels)
+
+def init_weights(net):
+    init_normal = weight_init.XavierUniform()
+    for _, cell in net.cells_and_names():
+        if isinstance(cell, (nn.Dense, nn.Conv1d)):
+            cell.weight.set_data(weight_init.initializer(init_normal,
+                                                         cell.weight.shape,
+                                                         cell.weight.dtype))
+            
+init_weights(net)
+```
+
+
 ### 加载预训练词向量
 
 与 :numref:`sec_sentiment_rnn`相同，我们加载预训练的100维GloVe嵌入作为初始化的词元表示。这些词元表示（嵌入权重）在`embedding`中将被训练，在`constant_embedding`中将被固定。
@@ -299,6 +361,15 @@ net.constant_embedding.weight.set_value(embeds)
 net.constant_embedding.weight.stop_gradient = True
 ```
 
+```{.python .input}
+#@tab mindspore
+glove_embedding = d2l.TokenEmbedding('glove.6b.100d')
+embeds = glove_embedding[vocab.idx_to_token]
+net.embedding.embedding_table.set_data(d2l.tensor(embeds))
+net.constant_embedding.embedding_table.set_data(d2l.tensor(embeds))
+net.constant_embedding.embedding_table.requires_grad = False
+```
+
 ### 训练和评估模型
 
 现在我们可以训练textCNN模型进行情感分析。
@@ -325,6 +396,15 @@ trainer = paddle.optimizer.Adam(learning_rate=lr, parameters=net.parameters())
 loss = nn.CrossEntropyLoss(reduction="none")
 d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs, devices)
 ```
+
+```{.python .input}
+#@tab mindspore
+lr, num_epochs = 0.001, 5
+trainer = nn.Adam(params=net.trainable_params(), lr=lr)
+loss = nn.CrossEntropyLoss(reduction="none")
+d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs)
+```
+
 
 下面，我们使用训练好的模型来预测两个简单句子的情感。
 
