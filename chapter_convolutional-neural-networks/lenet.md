@@ -110,15 +110,16 @@ net = nn.Sequential(
 #@tab mindspore
 from d2l import mindspore as d2l
 from mindspore import nn, ops, value_and_grad
+from mindspore.common.initializer import initializer, XavierUniform, Uniform, _calculate_fan_in_and_fan_out
 
 net = nn.SequentialCell([
-    nn.Conv2d(1, 6, kernel_size=5, padding=2, pad_mode='pad', weight_init='xavier_uniform'), nn.Sigmoid(),
+    nn.Conv2d(1, 6, kernel_size=5, padding=2, pad_mode='pad', has_bias=True), nn.Sigmoid(),
     nn.AvgPool2d(kernel_size=2, stride=2),
-    nn.Conv2d(6, 16, kernel_size=5, pad_mode='valid', weight_init='xavier_uniform'), nn.Sigmoid(),
+    nn.Conv2d(6, 16, kernel_size=5, pad_mode='valid', has_bias=True), nn.Sigmoid(),
     nn.AvgPool2d(kernel_size=2, stride=2), nn.Flatten(),
-    nn.Dense(16 * 5 * 5, 120, weight_init='xavier_uniform'), nn.Sigmoid(),
-    nn.Dense(120, 84, weight_init='xavier_uniform'), nn.Sigmoid(),
-    nn.Dense(84, 10, weight_init='xavier_uniform')
+    nn.Dense(16 * 5 * 5, 120), nn.Sigmoid(),
+    nn.Dense(120, 84), nn.Sigmoid(),
+    nn.Dense(84, 10)
 ])
 ```
 
@@ -449,6 +450,15 @@ def train_ch6(net, train_iter, test_iter, num_epochs, lr, device):
 #@save
 def train_ch6(net, train_dataset, test_dataset, num_epochs, lr):
     """用GPU训练模型(在第六章定义)。"""
+
+    for _, cell in net.cells_and_names():
+        if isinstance(cell, (nn.Conv2d, nn.Dense)):
+            cell.weight.set_data(initializer(XavierUniform(), cell.weight.shape))
+            if cell.has_bias:
+                fan_in, _ = _calculate_fan_in_and_fan_out(cell.weight.shape)
+                bound = 1 / math.sqrt(fan_in)
+                cell.bias.set_data(initializer(Uniform(bound), [cell.out_channels]))
+
     optim = nn.SGD(net.trainable_params(), learning_rate=lr)
     loss_fn = nn.SoftmaxCrossEntropyWithLogits(sparse=True, reduction='mean')
 

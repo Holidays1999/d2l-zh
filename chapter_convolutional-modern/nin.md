@@ -92,11 +92,11 @@ from mindspore import nn, ops
 
 def nin_block(in_channels, out_channels, kernel_size, strides, padding):
     return nn.SequentialCell([
-        nn.Conv2d(in_channels, out_channels, kernel_size, strides, 'pad', padding),
+        nn.Conv2d(in_channels, out_channels, kernel_size, strides, 'pad', padding, has_bias=True),
         nn.ReLU(),
-        nn.Conv2d(out_channels, out_channels, kernel_size=1),
+        nn.Conv2d(out_channels, out_channels, kernel_size=1, has_bias=True),
         nn.ReLU(),
-        nn.Conv2d(out_channels, out_channels, kernel_size=1), 
+        nn.Conv2d(out_channels, out_channels, kernel_size=1, has_bias=True),
         nn.ReLU()])
 ```
 
@@ -188,7 +188,7 @@ net = nn.SequentialCell([
     nn.MaxPool2d(3, stride=2),
     nin_block(256, 384, kernel_size=3, strides=1, padding=1),
     nn.MaxPool2d(3, stride=2),
-    nn.Dropout(keep_prob=1-0.5),
+    nn.Dropout(p=0.5),
     nin_block(384, 10, kernel_size=3, strides=1, padding=1),
     nn.AdaptiveAvgPool2d((1, 1)),
     nn.Flatten()])
@@ -249,7 +249,7 @@ d2l.train_ch6(net, train_iter, test_iter, num_epochs, lr, d2l.try_gpu())
 
 ```{.python .input}
 #@tab mindspore
-lr, num_epochs, batch_size = 0.05, 10, 128
+lr, num_epochs, batch_size = 0.1, 10, 128
 train_iter, test_iter = d2l.load_data_fashion_mnist(batch_size, resize=224)
 d2l.train_ch6(net, train_iter, test_iter, num_epochs, lr)
 ```

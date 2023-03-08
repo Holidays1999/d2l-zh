@@ -583,7 +583,7 @@ d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs,
 lr, num_epochs = 1e-4, 5
 trainer = nn.Adam(learning_rate=lr, params=net.trainable_params())
 loss = nn.CrossEntropyLoss(reduction="none")
-d2l.train_ch13_bert(net, train_iter, test_iter, loss, trainer, num_epochs)
+d2l.train_ch15_bert(net, train_iter, test_iter, loss, trainer, num_epochs)
 ```
 
 ## 小结

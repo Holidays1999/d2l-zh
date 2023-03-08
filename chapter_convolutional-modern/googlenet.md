@@ -161,13 +161,13 @@ from mindspore import nn, ops
 class Inception(nn.Cell):
     def __init__(self, in_channels, c1, c2, c3, c4, **kwargs):
         super(Inception, self).__init__(**kwargs)
-        self.p1_1 = nn.Conv2d(in_channels, c1, kernel_size=1, weight_init='xavier_uniform')
-        self.p2_1 = nn.Conv2d(in_channels, c2[0], kernel_size=1, weight_init='xavier_uniform')
-        self.p2_2 = nn.Conv2d(c2[0], c2[1], kernel_size=3, padding=1, pad_mode='pad', weight_init='xavier_uniform')
-        self.p3_1 = nn.Conv2d(in_channels, c3[0], kernel_size=1, weight_init='xavier_uniform')
-        self.p3_2 = nn.Conv2d(c3[0], c3[1], kernel_size=5, padding=2, pad_mode='pad', weight_init='xavier_uniform')
+        self.p1_1 = nn.Conv2d(in_channels, c1, kernel_size=1, has_bias=True)
+        self.p2_1 = nn.Conv2d(in_channels, c2[0], kernel_size=1, has_bias=True)
+        self.p2_2 = nn.Conv2d(c2[0], c2[1], kernel_size=3, padding=1, pad_mode='pad', has_bias=True)
+        self.p3_1 = nn.Conv2d(in_channels, c3[0], kernel_size=1, has_bias=True)
+        self.p3_2 = nn.Conv2d(c3[0], c3[1], kernel_size=5, padding=2, pad_mode='pad', has_bias=True)
         self.p4_1 = nn.MaxPool2d(kernel_size=3, stride=1, pad_mode='same')
-        self.p4_2 = nn.Conv2d(in_channels, c4, kernel_size=1, weight_init='xavier_uniform')
+        self.p4_2 = nn.Conv2d(in_channels, c4, kernel_size=1, has_bias=True)
         self.relu = nn.ReLU()
         self.concat = ops.Concat(axis=1)
 
@@ -225,7 +225,7 @@ b1 = nn.Sequential(nn.Conv2D(1, 64, kernel_size=7, stride=2, padding=3),
 ```{.python .input}
 #@tab mindspore
 b1 = nn.SequentialCell([
-    nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, pad_mode='pad', weight_init='xavier_uniform'),
+    nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, pad_mode='pad', has_bias=True),
     nn.ReLU(),
     nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same')])
 ```
@@ -271,9 +271,9 @@ b2 = nn.Sequential(nn.Conv2D(64, 64, kernel_size=1),
 ```{.python .input}
 #@tab mindspore
 b2 = nn.SequentialCell([
-    nn.Conv2d(64, 64, kernel_size=1, weight_init='xavier_uniform'),
+    nn.Conv2d(64, 64, kernel_size=1, has_bias=True),
     nn.ReLU(),
-    nn.Conv2d(64, 192, kernel_size=3, padding=1, pad_mode='pad', weight_init='xavier_uniform'),
+    nn.Conv2d(64, 192, kernel_size=3, padding=1, pad_mode='pad', has_bias=True),
     nn.ReLU(),
     nn.MaxPool2d(kernel_size=3, stride=2, pad_mode='same')])
 ```
@@ -480,7 +480,7 @@ for layer in net:
 
 ```{.python .input}
 #@tab mindspore
-X = ops.randn(1, 1, 224, 224)
+X = ops.randn(1, 1, 96, 96)
 for blk in net:
     X = blk(X)
     print(blk.__class__.__name__,'output shape:\t',X.shape)
@@ -493,14 +493,14 @@ for blk in net:
 ```{.python .input}
 #@tab mxnet, pytorch, paddle, tensorflow
 lr, num_epochs, batch_size = 0.1, 10, 128
-train_iter, test_iter = d2l.load_data_fashion_mnist(batch_size, resize=224)
+train_iter, test_iter = d2l.load_data_fashion_mnist(batch_size, resize=96)
 d2l.train_ch6(net, train_iter, test_iter, num_epochs, lr, d2l.try_gpu())
 ```
 
 ```{.python .input}
 #@tab mindspore
-lr, num_epochs, batch_size = 0.05, 10, 128
-train_iter, test_iter = d2l.load_data_fashion_mnist(batch_size, resize=224)
+lr, num_epochs, batch_size = 0.1, 10, 128
+train_iter, test_iter = d2l.load_data_fashion_mnist(batch_size, resize=96)
 d2l.train_ch6(net, train_iter, test_iter, num_epochs, lr)
 ```
 

@@ -251,7 +251,7 @@ class TextCNN(nn.Cell):
         self.embedding = nn.Embedding(vocab_size, embed_size)
         # 这个嵌入层不需要训练
         self.constant_embedding = nn.Embedding(vocab_size, embed_size)
-        self.dropout = nn.Dropout(keep_prob=1-0.5)
+        self.dropout = nn.Dropout(p=0.5)
         self.decoder = nn.Dense(sum(num_channels), 2)
         # 最大时间汇聚层没有参数，因此可以共享此实例
         self.pool = nn.AdaptiveAvgPool1d(1)

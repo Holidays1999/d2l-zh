@@ -498,7 +498,7 @@ net = nn.Sequential(
 net = nn.SequentialCell([
     b1, *blks,
     nn.BatchNorm2d(num_channels), nn.ReLU(),
-    nn.AdaptiveMaxPool2d((1, 1)),
+    nn.AdaptiveAvgPool2d((1, 1)),
     nn.Flatten(),
     nn.Dense(num_channels, 10)])
 ```

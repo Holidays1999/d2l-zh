@@ -297,7 +297,7 @@ d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs,
 
 ```{.python .input}
 #@tab mindspore
-lr, num_epochs = 0.01, 2
+lr, num_epochs = 0.01, 5
 trainer = nn.Adam(learning_rate=lr, params=net.trainable_params())
 loss = nn.CrossEntropyLoss(reduction="none")
 d2l.train_ch13(net, train_iter, test_iter, loss, trainer, num_epochs)

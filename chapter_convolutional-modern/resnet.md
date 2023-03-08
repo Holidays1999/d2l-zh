@@ -253,7 +253,7 @@ Y.shape
 
 ```{.python .input}
 #@tab mindspore
-blk = Residual(3,3)
+blk = Residual(3, 3)
 X = ops.rand(4, 3, 6, 6)
 Y = blk(X)
 Y.shape

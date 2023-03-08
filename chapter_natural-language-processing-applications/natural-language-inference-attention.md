@@ -107,12 +107,12 @@ def mlp(num_inputs, num_hiddens, flatten):
 #@tab mindspore
 def mlp(num_inputs, num_hiddens, flatten):
     net = []
-    net.append(nn.Dropout(keep_prob=1-0.2))
+    net.append(nn.Dropout(p=0.2))
     net.append(nn.Dense(num_inputs, num_hiddens))
     net.append(nn.ReLU())
     if flatten:
         net.append(nn.Flatten()) 
-    net.append(nn.Dropout(keep_prob=1-0.2))
+    net.append(nn.Dropout(p=0.2))
     net.append(nn.Dense(num_hiddens, num_hiddens))
     net.append(nn.ReLU())
     if flatten:
@@ -217,13 +217,13 @@ class Attend(nn.Cell):
         f_A = self.f(A)
         f_B = self.f(B)
         # e的形状：（批量大小，序列A的词元数，序列B的词元数）
-        e = ops.BatchMatMul()(f_A, f_B.transpose(0, 2, 1))
+        e = f_A.bmm(f_B.transpose(0, 2, 1))
         # beta的形状：（批量大小，序列A的词元数，embed_size），
         # 意味着序列B被软对齐到序列A的每个词元(beta的第1个维度)
-        beta = ops.BatchMatMul()(ops.softmax(e, axis=-1), B)
+        beta = ops.softmax(e, axis=-1).bmm(B)
         # beta的形状：（批量大小，序列B的词元数，embed_size），
         # 意味着序列A被软对齐到序列B的每个词元(alpha的第1个维度)
-        alpha = ops.BatchMatMul()(ops.softmax(e.transpose(0, 2, 1), axis=-1), A)
+        alpha = ops.softmax(e.transpose(0, 2, 1), axis=-1).bmm(A)
         return beta, alpha
 ```
 
